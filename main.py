@@ -1,9 +1,9 @@
 import os
-import random
 import logging
-import asyncio
+import threading
+
 from flask import Flask
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -27,88 +27,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    logger.error("BOT_TOKEN не задан в переменных окружения!")
 
-# ---------- Данные для генерации ----------
-RESOURCES = [
-    "Pinterest: возьми гайд или аккорды (https://pin.it/5mY6kTJlH)",
-    "Reels: открой сохранёнку с референсом и возьми идею оттуда",
-    "Старые проекты: открой незаконченный проект и используй один элемент",
-    "Книга «Твой первый трек»: выбери главу под навык (ритм, гармония, звук)",
-    "Случайный звук: запиши бытовой шум/голос/поле и используй как исходник",
-]
-
-ACTIONS = [
-    "Сделай что-то нарочно некрасивое, просто чтобы разогреться.",
-    "Повтори ритм, который слышишь вокруг.",
-    "Возьми луп из старого трека, оставь одну дорожку и построй вокруг неё новое.",
-    "Сделай 8 секунд звука, которые тебе нравятся. Если идёт хорошо, сделай 16 или 32.",
-    "Сдвинь кик или снейр на пару миллисекунд и найди, где начинается кач.",
-    "Сделай ритм, где каждый удар отличается (громкость/пэн/длина).",
-    "Сделай минутный трек, где каждые 4 такта что-то меняется.",
-]
-
-FOCUSES = [
-    "Ограничение по времени: 15 минут.",
-    "Только встроенные плагины.",
-    "Без ударных.",
-    "Только шумы и записи реального мира.",
-    "Пусть всё звучит как утро.",
-]
-
-MAIN_KB = ReplyKeyboardMarkup(
-    [["🎲 Получить задание"], ["📚 Что это за система?"]],
-    resize_keyboard=True,
-)
-
-# ---------- Логика генерации ----------
-def build_task() -> str:
-    resource = random.choice(RESOURCES)
-    action = random.choice(ACTIONS)
-    focus = random.choice(FOCUSES)
-    return (
-        f"РЕСУРС:\n• {resource}\n\n"
-        f"ЗАДАНИЕ:\n• {action}\n\n"
-        f"ФОКУС:\n• {focus}"
-    )
-
-# ---------- Хендлеры бота ----------
+# ---------- Твои хендлеры ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет. Я твой музыкальный пинок.\nЖми «🎲 Получить задание».",
-        reply_markup=MAIN_KB,
-    )
+    await update.message.reply_text("Привет! Жми кнопку и работай ✨")
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").lower()
-    if "получить" in text:
-        await update.message.reply_text(build_task(), reply_markup=MAIN_KB)
-    elif "система" in text:
+
+    if "система" in text:
         await update.message.reply_text(
-            "Я собираю задачу из трёх частей: ресурс → задание → фокус.\n"
-            "Ты жми кнопку и работай.",
-            reply_markup=MAIN_KB,
+            "Я собираю задания из трёх частей: ресурс → задание → фокус.\n"
+            "Жми кнопку и работай."
         )
     else:
-        await update.message.reply_text(
-            "Жми кнопку. Не усложняй.",
-            reply_markup=MAIN_KB,
-        )
+        # тут будет твоя логика музыкальных заданий
+        await update.message.reply_text("Поймала сообщение, готовлю муз-задание 🎛")
 
-# ---------- Запуск бота ----------
-async def run_bot():
-    token = BOT_TOKEN
-    if not token:
-        raise RuntimeError("Нет BOT_TOKEN в переменных окружения")
+def run_telegram_bot():
+    """Запускает Telegram-бота в этом потоке, без лишнего asyncio."""
+    if not BOT_TOKEN:
+        return
 
-    application = ApplicationBuilder().token(token).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("Бот запущен. Иди в Telegram.")
-    await application.run_polling()
+    # run_polling сам удаляет webhook и блокирует поток
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+# ---------- Точка входа ----------
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(run_bot())
-    # Flask держит веб-сервис для Render
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    # запускаем бота в фоне
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread.start()
+
+    # запускаем Flask для Render
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
