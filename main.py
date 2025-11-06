@@ -9,7 +9,6 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    ChannelPostHandler,
     ContextTypes,
     filters,
 )
@@ -31,13 +30,13 @@ logger = logging.getLogger(__name__)
 
 # ---------- Переменные окружения ----------
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_ID_RAW = os.environ.get("CHANNEL_ID")  # сюда ты в Render вписала -100...
+CHANNEL_ID_RAW = os.environ.get("CHANNEL_ID")  # ты это задала в Render
 CHANNEL_ID = None
 if CHANNEL_ID_RAW:
     try:
         CHANNEL_ID = int(CHANNEL_ID_RAW)
     except ValueError:
-        # если по ошибке указали текст вместо числа — просто не фильтруем по каналу
+        # если вместо числа указали текст — просто не фильтруем по каналу
         logger.warning("CHANNEL_ID is not int, got %s", CHANNEL_ID_RAW)
         CHANNEL_ID = None
 
@@ -119,8 +118,8 @@ KEYBOARD = ReplyKeyboardMarkup(
 def generate_task() -> str:
     resource = random.choice(RESOURCES)
 
-    # если ресурс — Маскелиаде, берём задание из его списка
-    if resource.startswith("👻 Эхо Антона Маскелиаде"):
+    # важно: тут должно совпадать с ресурсом из списка, без 👻
+    if resource.startswith("Эхо Антона Маскелиаде"):
         task = random.choice(MASKELIADE_TASKS)
     else:
         task = random.choice(TASKS_COMMON)
@@ -146,12 +145,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обрабатываем только обычные юзерские сообщения.
-    Апдейты из канала сюда НЕ должны сваливаться — поэтому первая проверка.
-    """
+    # чтобы не падать на channel_post
     if not update.message:
-        return  # например, это был channel_post — ничего не делаем
+        return
 
     text = (update.message.text or "").strip()
 
@@ -201,7 +197,7 @@ async def channel_post_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if not channel_post:
         return
 
-    # если ты задала CHANNEL_ID — фильтруем по нему
+    # если указали CHANNEL_ID — фильтруем по нему
     if CHANNEL_ID is not None and channel_post.chat.id != CHANNEL_ID:
         return
 
@@ -227,10 +223,10 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    # посты из канала
-    application.add_handler(ChannelPostHandler(channel_post_handler))
+    # посты из канала — через MessageHandler, потому что ChannelPostHandler у тебя нет
+    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, channel_post_handler))
 
-    # в потоке нельзя вешать сигналы, поэтому stop_signals=None
+    # в потоке нельзя вешать сигналы
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         stop_signals=None,
