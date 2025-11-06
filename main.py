@@ -235,10 +235,17 @@ def run_telegram_bot():
 
 # ---------- entrypoint ----------
 if __name__ == "__main__":
-    # бот в фоне
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
+    import asyncio
+    import threading
 
-    # flask для render
+    async def run_bot():
+        # очищаем прошлые webhook-и, чтобы Telegram не конфликтовал
+        await application.bot.delete_webhook(drop_pending_updates=True)
+        await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    # запускаем бот в отдельном потоке (один раз!)
+    threading.Thread(target=lambda: asyncio.run(run_bot()), daemon=True).start()
+
+    # Flask без reloader (чтобы не стартовало второй процесс)
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
