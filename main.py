@@ -30,9 +30,10 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN не задан в переменных окружения!")
 
-# ---------- Твои хендлеры ----------
+# ---------- твои хендлеры ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Жми кнопку и работай ✨")
+    # сюда потом вернём твою “собираю задание из трёх частей”
+    await update.message.reply_text("Привет! Я жив. Жми кнопку и работай 🎛")
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").lower()
@@ -43,11 +44,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Жми кнопку и работай."
         )
     else:
-        # тут будет твоя логика музыкальных заданий
-        await update.message.reply_text("Поймала сообщение, готовлю муз-задание 🎛")
+        await update.message.reply_text("Приняла. Могу сгенерить муз-задание 🎶")
 
 def run_telegram_bot():
-    """Запускает Telegram-бота в этом потоке, без лишнего asyncio."""
+    """Запуск бота в отдельном потоке БЕЗ сигналов."""
     if not BOT_TOKEN:
         return
 
@@ -56,15 +56,17 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    # run_polling сам удаляет webhook и блокирует поток
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # КЛЮЧ: stop_signals=None — чтобы не падать в потоке
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        stop_signals=None,
+    )
 
-# ---------- Точка входа ----------
 if __name__ == "__main__":
     # запускаем бота в фоне
     bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
     bot_thread.start()
 
-    # запускаем Flask для Render
+    # запускаем Flask — это нужно Render’у
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
